@@ -6,7 +6,7 @@ import NaturalLanguage
 
 @Generable
 struct GeneratedSegmentation {
-    @Guide(description: "The transcript split into consecutive statements, each copied word for word")
+    @Guide(description: "The transcript split into consecutive statements, each copied word for word.")
     var statements: [String]
 }
 
@@ -74,9 +74,17 @@ enum ReviewPipeline {
             }
         }
 
+        if (pieces?.count == wordCount(trimmed)) {
+            pieces = sentenceSplit(trimmed)
+        }
+
         return (pieces ?? sentenceSplit(trimmed))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+    
+    private static func wordCount(_ text: String) -> Int {
+        text.split(whereSeparator: \.isWhitespace).count
     }
 
     private static func isFaithful(_ pieces: [String], to transcript: String) -> Bool {
