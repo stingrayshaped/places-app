@@ -88,20 +88,17 @@ struct TagPickerView: View {
     }
 
     private func toggle(_ definition: TagDefinition) {
-        if let index = restaurant.appliedTags.firstIndex(where: { $0.tagKey == definition.key }) {
-            restaurant.appliedTags.remove(at: index)
+        if isApplied(definition) {
+            restaurant.removeTag(key: definition.key)
         } else {
             // In single-choice sections (like Price), applying one replaces the others.
+            var siblings = Set<String>()
             if TagRules.singleChoiceSections.contains(definition.section) {
-                let siblings = Set(definitions
+                siblings = Set(definitions
                     .filter { $0.section == definition.section }
                     .map(\.key))
-                restaurant.appliedTags.removeAll { siblings.contains($0.tagKey) }
             }
-            restaurant.appliedTags.append(
-                TagApplication(tagKey: definition.key, source: .manual)
-            )
+            restaurant.applyTagManually(key: definition.key, replacing: siblings)
         }
-        restaurant.updatedAt = .now
     }
 }

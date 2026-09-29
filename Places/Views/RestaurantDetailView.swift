@@ -4,6 +4,7 @@ import SwiftData
 struct RestaurantDetailView: View {
     @Bindable var restaurant: Restaurant
     @Query(sort: \TagDefinition.sortOrder) private var definitions: [TagDefinition]
+    @State private var inspecting: TagDefinition?
 
     private var center: AnalysisCenter { .shared }
 
@@ -16,7 +17,14 @@ struct RestaurantDetailView: View {
             if !appliedWarnings.isEmpty {
                 Section("Warnings") {
                     FlowLayout {
-                        ForEach(appliedWarnings) { WarningChip(text: $0.name) }
+                        ForEach(appliedWarnings) { definition in
+                            Button {
+                                inspecting = definition
+                            } label: {
+                                WarningChip(text: definition.name, isAI: isAI(definition))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -25,7 +33,14 @@ struct RestaurantDetailView: View {
             Section("Tags") {
                 if !appliedTags.isEmpty {
                     FlowLayout {
-                        ForEach(appliedTags) { TagChip(text: $0.name) }
+                        ForEach(appliedTags) { definition in
+                            Button {
+                                inspecting = definition
+                            } label: {
+                                TagChip(text: definition.name, isAI: isAI(definition))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -57,6 +72,9 @@ struct RestaurantDetailView: View {
         .navigationTitle(restaurant.name)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { restaurant.updatedAt = .now }
+        .sheet(item: $inspecting) { definition in
+            TagDetailSheet(restaurant: restaurant, definition: definition)
+        }
     }
 
     // MARK: Applied tags and warnings
@@ -69,6 +87,10 @@ struct RestaurantDetailView: View {
         return definitions.filter { $0.kind == kind && keys.contains($0.key) }
     }
 
+    private func isAI(_ definition: TagDefinition) -> Bool {
+        restaurant.appliedTags.contains { $0.tagKey == definition.key && $0.source == .ai }
+    }
+
     // MARK: Summary
 
     @ViewBuilder
@@ -76,7 +98,7 @@ struct RestaurantDetailView: View {
         if center.isRunning(restaurant) {
             HStack {
                 ProgressView()
-                Text("Writing summary…")
+                Text("Analyzing review…")
                     .foregroundStyle(.secondary)
             }
         } else if restaurant.statements.isEmpty {
@@ -116,27 +138,41 @@ struct RestaurantDetailView: View {
     }
 }
 
+// MARK: - Chips
+
 struct TagChip: View {
     let text: String
+    var isAI = false
 
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.accentColor.opacity(0.15), in: Capsule())
+        HStack(spacing: 4) {
+            Text(text)
+            if isAI {
+                Image(systemName: "sparkle")
+                    .font(.caption2)
+            }
+        }
+        .font(.subheadline)
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.accentColor.opacity(0.15), in: Capsule())
     }
 }
 
 struct WarningChip: View {
     let text: String
+    var isAI = false
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "exclamationmark.triangle.fill")
             Text(text)
+            if isAI {
+                Image(systemName: "sparkle")
+                    .font(.caption2)
+            }
         }
         .font(.subheadline)
         .foregroundStyle(.orange)
@@ -145,5 +181,93 @@ struct WarningChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(Color.orange.opacity(0.15), in: Capsule())
+    }
+}
+
+// MARK: - Why was this applied?
+
+struct EvidenceLine: Identifiable {
+    let number: Int
+    let statement: ReviewStatement
+    var id: UUID { statement.id }
+}
+
+struct TagDetailSheet: View {
+    @Bindable var restaurant: Restaurant
+    let definition: TagDefinition
+    @Environment(\.dismiss) private var dismiss
+
+    private var application: TagApplication? {
+        restaurant.appliedTags.first { $0.tagKey == definition.key }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !definition.definition.isEmpty {
+                    Section("Meaning") {
+                        Text(definition.definition)
+                    }
+                }
+
+                Section("Why") {
+                    whyContent
+                }
+
+                Section {
+                    Button("Remove", role: .destructive) {
+                        restaurant.removeTag(key: definition.key)
+                        dismiss()
+                    }
+                } footer: {
+                    Text("A removed tag won't be applied again automatically.")
+                }
+            }
+            .navigationTitle(definition.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private var whyContent: some View {
+        if let application {
+            switch application.source {
+            case .manual:
+                Text("Added by you.")
+                    .foregroundStyle(.secondary)
+            case .ai:
+                let lines = evidenceLines(for: application)
+                if lines.isEmpty {
+                    Text("The statements that supported this have changed. Update the summary to check again.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Applied by AI from:", systemImage: "sparkles")
+                        .foregroundStyle(.secondary)
+                    ForEach(lines) { line in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text("\(line.number)")
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 28, alignment: .trailing)
+                            Text(line.statement.text)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func evidenceLines(for application: TagApplication) -> [EvidenceLine] {
+        restaurant.statements.enumerated().compactMap { index, statement in
+            application.evidence.contains(statement.id)
+                ? EvidenceLine(number: index + 1, statement: statement)
+                : nil
+        }
     }
 }

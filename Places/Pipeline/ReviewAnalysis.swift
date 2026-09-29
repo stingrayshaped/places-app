@@ -1,12 +1,14 @@
 import Foundation
 import FoundationModels
 import Observation
+import SwiftData
 
 enum AnalysisError: Error {
     case modelUnavailable
+    case taggingFailed(String)
 }
 
-// MARK: - The pass
+// MARK: - Summary pass
 
 enum ReviewAnalysis {
 
@@ -53,8 +55,8 @@ final class AnalysisCenter {
         errors[restaurant.id]
     }
 
-    /// Regenerates the summary. Skips the work if nothing changed,
-    /// unless `force` is true.
+    /// Regenerates the summary and the AI-applied tags. Skips the work if
+    /// nothing changed, unless `force` is true.
     func refresh(_ restaurant: Restaurant, force: Bool = false) async {
         let id = restaurant.id
         guard !running.contains(id) else { return }
@@ -64,25 +66,90 @@ final class AnalysisCenter {
         errors[id] = nil
         defer { running.remove(id) }
 
-        let lines = restaurant.statements.map(\.text)
+        let statements = restaurant.statements
+        let lines = statements.map(\.text)
         let source = restaurant.statementsSource
 
-        // Nothing left to summarize: clear the derived fields.
-        if lines.isEmpty {
+        // Nothing left to analyze: clear everything the AI produced.
+        if statements.isEmpty {
             restaurant.summary = ""
             restaurant.analyzedSource = ""
+            restaurant.appliedTags.removeAll { $0.source == .ai }
             return
         }
 
         do {
             restaurant.summary = try await ReviewAnalysis.summarize(statements: lines)
+
+            let vocabulary = snapshots(for: restaurant)
+            let output = try await TagAnalysis.apply(statements: statements, vocabulary: vocabulary)
+            applyResults(output, vocabulary: vocabulary, to: restaurant)
+
             restaurant.analyzedSource = source
             restaurant.updatedAt = .now
+
+            if !output.uncheckedSections.isEmpty {
+                errors[id] = "Couldn't check these tag sections: "
+                    + output.uncheckedSections.sorted().joined(separator: ", ") + "."
+            }
         } catch AnalysisError.modelUnavailable {
             errors[id] = "Apple Intelligence isn't available on this device."
+        } catch AnalysisError.taggingFailed(let detail) {
+            print("Tagging failed:", detail)
+            errors[id] = "Couldn't apply tags: \(detail)"
         } catch {
             print("Analysis failed:", error)
-            errors[id] = "Couldn't generate the summary. Try again."
+            errors[id] = "Couldn't analyze the review. Try again."
+        }
+    }
+
+    // MARK: Helpers
+
+    private func snapshots(for restaurant: Restaurant) -> [TagSnapshot] {
+        let descriptor = FetchDescriptor<TagDefinition>(sortBy: [SortDescriptor(\.sortOrder)])
+        let definitions = (try? restaurant.modelContext?.fetch(descriptor)) ?? []
+        return definitions.map {
+            TagSnapshot(key: $0.key, name: $0.name, kind: $0.kind, section: $0.section,
+                        definition: $0.definition, aliases: $0.aliases)
+        }
+    }
+
+    /// Manual tags always stay. AI tags are recomputed, skipping anything
+    /// the user removed or already chose by hand.
+    private func applyResults(_ output: TagAnalysisOutput,
+                              vocabulary: [TagSnapshot],
+                              to restaurant: Restaurant) {
+        let sectionByKey = Dictionary(vocabulary.map { ($0.key, $0.section) },
+                                      uniquingKeysWith: { first, _ in first })
+        let manual = restaurant.appliedTags.filter { $0.source == .manual }
+        let manualKeys = Set(manual.map(\.tagKey))
+        let manualSections = Set(manual.compactMap { sectionByKey[$0.tagKey] })
+        let rejected = Set(restaurant.rejectedTagKeys)
+
+        // AI tags in sections we couldn't check stay exactly as they were.
+        let keptAI = restaurant.appliedTags.filter { application in
+            application.source == .ai
+            && output.uncheckedSections.contains(sectionByKey[application.tagKey] ?? "")
+        }
+        let keptKeys = Set(keptAI.map(\.tagKey))
+
+        var eligible = output.results.filter {
+            !manualKeys.contains($0.key)
+            && !rejected.contains($0.key)
+            && !keptKeys.contains($0.key)
+        }
+
+        // Single-choice sections (like Price): skip if the user already chose,
+        // and drop the section if the AI found more than one.
+        for section in TagRules.singleChoiceSections {
+            let count = eligible.filter { $0.section == section }.count
+            if manualSections.contains(section) || count > 1 {
+                eligible.removeAll { $0.section == section }
+            }
+        }
+
+        restaurant.appliedTags = manual + keptAI + eligible.map {
+            TagApplication(tagKey: $0.key, source: .ai, evidence: $0.evidence)
         }
     }
 }

@@ -22,6 +22,7 @@ final class Restaurant {
 
     // Tags and warnings, by vocabulary key
     var appliedTags: [TagApplication] = []
+    var rejectedTagKeys: [String] = []   // tags the user removed; the AI won't re-apply them
 
     init(name: String, address: String = "") {
         self.id = UUID()

@@ -90,3 +90,25 @@ extension Sequence where Element == TagDefinition {
         return order.map { (section: $0, items: buckets[$0] ?? []) }
     }
 }
+
+extension Restaurant {
+    /// Removes a tag or warning and remembers the removal,
+    /// so the AI doesn't apply it again.
+    func removeTag(key: String) {
+        appliedTags.removeAll { $0.tagKey == key }
+        if !rejectedTagKeys.contains(key) {
+            rejectedTagKeys.append(key)
+        }
+        updatedAt = .now
+    }
+
+    /// Applies a tag by hand, optionally replacing siblings in a single-choice section.
+    func applyTagManually(key: String, replacing siblingKeys: Set<String> = []) {
+        appliedTags.removeAll { siblingKeys.contains($0.tagKey) }
+        rejectedTagKeys.removeAll { $0 == key }
+        if !appliedTags.contains(where: { $0.tagKey == key }) {
+            appliedTags.append(TagApplication(tagKey: key, source: .manual))
+        }
+        updatedAt = .now
+    }
+}
