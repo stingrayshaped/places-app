@@ -5,6 +5,7 @@ struct RestaurantDetailView: View {
     @Bindable var restaurant: Restaurant
     @Query(sort: \TagDefinition.sortOrder) private var definitions: [TagDefinition]
     @State private var inspecting: TagDefinition?
+    @State private var showingAddressFinder = false
 
     private var center: AnalysisCenter { .shared }
 
@@ -29,7 +30,11 @@ struct RestaurantDetailView: View {
                     .padding(.vertical, 4)
                 }
             }
-
+            
+            Section("Address") {
+                addressContent
+            }
+            
             Section("Tags") {
                 if !appliedTags.isEmpty {
                     FlowLayout {
@@ -63,17 +68,22 @@ struct RestaurantDetailView: View {
                     }
                 }
             }
-
+            
             Section("Details") {
                 TextField("Restaurant Name", text: $restaurant.name)
-                TextField("Address", text: $restaurant.address)
             }
+            
         }
         .navigationTitle(restaurant.name)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { restaurant.updatedAt = .now }
         .sheet(item: $inspecting) { definition in
             TagDetailSheet(restaurant: restaurant, definition: definition)
+        }
+        .sheet(isPresented: $showingAddressFinder) {
+            AddressFinderView(initialQuery: restaurant.name) { place in
+                restaurant.apply(place)
+            }
         }
     }
 
@@ -89,6 +99,44 @@ struct RestaurantDetailView: View {
 
     private func isAI(_ definition: TagDefinition) -> Bool {
         restaurant.appliedTags.contains { $0.tagKey == definition.key && $0.source == .ai }
+    }
+    
+    // MARK: Address and directions
+
+    @ViewBuilder
+    private var addressContent: some View {
+        TextField("Address", text: $restaurant.address)
+
+        Button {
+            showingAddressFinder = true
+        } label: {
+            Label(restaurant.address.isEmpty ? "Find Address on Map" : "Look Up Address Again",
+                  systemImage: "mappin.and.ellipse")
+        }
+
+        if !restaurant.address.isEmpty {
+            Menu {
+                Button("Driving", systemImage: "car.fill") {
+                    MapsLauncher.openDirections(to: restaurant, mode: .driving)
+                }
+                Button("Walking", systemImage: "figure.walk") {
+                    MapsLauncher.openDirections(to: restaurant, mode: .walking)
+                }
+                Button("Transit", systemImage: "tram.fill") {
+                    MapsLauncher.openDirections(to: restaurant, mode: .transit)
+                }
+            } label: {
+                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+            } primaryAction: {
+                MapsLauncher.openDirections(to: restaurant, mode: .driving)
+            }
+
+            Text(restaurant.hasVerifiedLocation
+                 ? "Matched on the map. Tap Directions to drive there, or touch and hold for walking or transit."
+                 : "Not matched on the map, so Directions will search for this address.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Summary

@@ -5,43 +5,100 @@ struct AddRestaurantView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    private enum Field { case name, address }
+    @FocusState private var focusedField: Field?
+
     @State private var name = ""
     @State private var address = ""
-    @FocusState private var focusedField: Field?
-    
-    enum Field { case name, address }
+    @State private var selectedPlace: PlaceResult?
+    @State private var officialName: String?
+    @State private var showingAddressFinder = false
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Restaurant Name", text: $name)
-                    .focused($focusedField, equals: .name)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .address }
+                Section {
+                    TextField("Restaurant Name", text: $name)
+                        .focused($focusedField, equals: .name)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .address }
 
-                TextField("Address", text: $address)
-                    .focused($focusedField, equals: .address)
-                    .submitLabel(.done)
-                    .onSubmit { focusedField = nil }
+                    TextField("Address", text: $address)
+                        .focused($focusedField, equals: .address)
+                        .submitLabel(.done)
+                        .onSubmit { focusedField = nil }
+                }
+
+                Section {
+                    Button {
+                        focusedField = nil
+                        showingAddressFinder = true
+                    } label: {
+                        Label("Find Address on Map", systemImage: "mappin.and.ellipse")
+                    }
+                    .disabled(trimmedName.isEmpty)
+
+                    if let officialName {
+                        Button {
+                            name = officialName
+                            self.officialName = nil
+                        } label: {
+                            Label("Use the name “\(officialName)”", systemImage: "textformat")
+                        }
+                    }
+
+                    if isMatched {
+                        Label("Matched on the map", systemImage: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Enter the restaurant's name, then search to fill in its exact address.")
+                }
             }
             .navigationTitle("New Restaurant")
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(trimmedName.isEmpty)
+                }
+            }
+            .sheet(isPresented: $showingAddressFinder) {
+                AddressFinderView(initialQuery: trimmedName) { place in
+                    selectedPlace = place
+                    address = place.address
+                    officialName = place.name.caseInsensitiveCompare(trimmedName) == .orderedSame
+                        ? nil
+                        : place.name
                 }
             }
         }
     }
 
+    // MARK: Helpers
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True while the address text is still the one the map result gave us.
+    private var isMatched: Bool {
+        guard let selectedPlace else { return false }
+        return !address.isEmpty && selectedPlace.address == address
+    }
+
     private func save() {
-        modelContext.insert(Restaurant(name: name, address: address))
+        let restaurant = Restaurant(
+            name: trimmedName,
+            address: address.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        if let selectedPlace, isMatched {
+            restaurant.apply(selectedPlace)
+        }
+        modelContext.insert(restaurant)
         dismiss()
     }
 }

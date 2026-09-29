@@ -23,6 +23,16 @@ final class Restaurant {
     // Tags and warnings, by vocabulary key
     var appliedTags: [TagApplication] = []
     var rejectedTagKeys: [String] = []   // tags the user removed; the AI won't re-apply them
+    
+    // Map match for the address
+    var latitude: Double?
+    var longitude: Double?
+    var verifiedAddress: String = ""   // the address text that latitude/longitude belong to
+
+    /// True when the coordinates still match the address text.
+    var hasVerifiedLocation: Bool {
+        latitude != nil && longitude != nil && !address.isEmpty && address == verifiedAddress
+    }
 
     init(name: String, address: String = "") {
         self.id = UUID()
