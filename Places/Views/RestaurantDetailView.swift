@@ -6,6 +6,10 @@ struct RestaurantDetailView: View {
     @Query(sort: \TagDefinition.sortOrder) private var definitions: [TagDefinition]
     @State private var inspecting: TagDefinition?
     @State private var showingAddressFinder = false
+    @Environment(\.modelContext) private var modelContext
+    @State private var showingNameSheet = false
+
+    private var profile: MyProfile { .shared }
 
     private var center: AnalysisCenter { .shared }
 
@@ -76,7 +80,11 @@ struct RestaurantDetailView: View {
         }
         .navigationTitle(restaurant.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear { restaurant.updatedAt = .now }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                shareMenu
+            }
+        }
         .sheet(item: $inspecting) { definition in
             TagDetailSheet(restaurant: restaurant, definition: definition)
         }
@@ -84,6 +92,9 @@ struct RestaurantDetailView: View {
             AddressFinderView(initialQuery: restaurant.name) { place in
                 restaurant.apply(place)
             }
+        }
+        .sheet(isPresented: $showingNameSheet) {
+            NameSheet()
         }
     }
 
@@ -136,6 +147,47 @@ struct RestaurantDetailView: View {
                  : "Not matched on the map, so Directions will search for this address.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+    
+    // MARK: Sharing
+
+    private var shareMenu: some View {
+        let name = ExportNaming.safeFilename(restaurant.name)
+
+        return Menu {
+            if profile.hasName {
+                ShareLink(
+                    item: ReviewsShareItem(container: modelContext.container,
+                                           restaurantID: restaurant.id,
+                                           filename: name),
+                    preview: SharePreview(restaurant.name, image: Image(systemName: "fork.knife"))
+                ) {
+                    Label("Share Full Review", systemImage: "doc.text")
+                }
+            } else {
+                Button {
+                    showingNameSheet = true
+                } label: {
+                    Label("Set Your Name to Share…", systemImage: "person.crop.circle.badge.plus")
+                }
+            }
+
+            ShareLink(
+                item: ContactCardItem(
+                    vcard: ContactCard.vcard(for: restaurant, definitions: definitions),
+                    filename: name
+                ),
+                preview: SharePreview(restaurant.name, image: Image(systemName: "person.crop.rectangle"))
+            ) {
+                Label("Share as Contact Card", systemImage: "person.crop.rectangle")
+            }
+
+            ShareLink(item: ReviewText.markdown(for: restaurant, definitions: definitions)) {
+                Label("Share as Text", systemImage: "text.alignleft")
+            }
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
         }
     }
 

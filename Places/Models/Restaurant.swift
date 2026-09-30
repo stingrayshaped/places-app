@@ -28,6 +28,21 @@ final class Restaurant {
     var latitude: Double?
     var longitude: Double?
     var verifiedAddress: String = ""   // the address text that latitude/longitude belong to
+    
+    // Who wrote this review. nil means you did.
+    var authorID: UUID?
+    var authorName: String = ""
+    var receivedAt: Date?
+
+    // Set when this review started as a copy of someone else's.
+    var basedOnAuthorName: String = ""
+    var basedOnReviewID: UUID?
+
+    // Fingerprint of the shareable content when updatedAt was last moved (see touchIfChanged).
+    var contentFingerprint: String = ""
+
+    /// True for reviews you wrote; false for ones received from a friend.
+    var isMine: Bool { authorID == nil }
 
     /// True when the coordinates still match the address text.
     var hasVerifiedLocation: Bool {
