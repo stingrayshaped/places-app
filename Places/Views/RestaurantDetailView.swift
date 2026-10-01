@@ -247,15 +247,7 @@ struct RestaurantDetailView: View {
                                            filename: name),
                     preview: SharePreview(restaurant.name, image: Image(systemName: "fork.knife"))
                 ) {
-                    Label("Share as File", systemImage: "doc.text")
-                }
-
-                ShareLink(
-                    item: ReviewsTextShareItem(container: modelContext.container,
-                                               restaurantID: restaurant.id),
-                    preview: SharePreview("\(restaurant.name) review")
-                ) {
-                    Label("Share as Text", systemImage: "text.alignleft")
+                    Label("Share Review File", systemImage: "doc.text")
                 }
             } else {
                 Button {
@@ -263,6 +255,10 @@ struct RestaurantDetailView: View {
                 } label: {
                     Label("Set Your Name to Share…", systemImage: "person.crop.circle.badge.plus")
                 }
+            }
+
+            ShareLink(item: ReviewText.markdown(for: restaurant)) {
+                Label("Share as Text", systemImage: "text.alignleft")
             }
         } label: {
             Label("Share", systemImage: "square.and.arrow.up")
