@@ -58,6 +58,7 @@ final class AnalysisCenter {
     /// Regenerates the summary and the AI-applied tags. Skips the work if
     /// nothing changed, unless `force` is true.
     func refresh(_ restaurant: Restaurant, force: Bool = false) async {
+        guard restaurant.isMine else { return }   // received reviews are never re-analyzed
         let id = restaurant.id
         guard !running.contains(id) else { return }
         guard force || restaurant.summaryIsStale else { return }

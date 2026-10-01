@@ -74,3 +74,25 @@ extension Restaurant {
         updatedAt = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded(.down))
     }
 }
+
+// MARK: - Making your own copy of someone's review
+
+extension Restaurant {
+    /// A new review of yours that starts out as a copy of this one.
+    func makeCopy() -> Restaurant {
+        let copy = Restaurant(name: name, address: address)   // gets its own new id
+        copy.latitude = latitude
+        copy.longitude = longitude
+        copy.verifiedAddress = verifiedAddress
+        copy.statements = statements.map {
+            ReviewStatement(id: $0.id, text: $0.text, sourceAudio: nil)
+        }
+        copy.summary = summary
+        copy.analyzedSource = summary.isEmpty ? "" : copy.statementsSource
+        copy.appliedTags = appliedTags
+        copy.basedOnAuthorName = isMine ? basedOnAuthorName : authorName
+        copy.basedOnReviewID = id
+        copy.contentFingerprint = copy.computeFingerprint()
+        return copy
+    }
+}

@@ -142,9 +142,9 @@ extension ReviewFile {
         )
     }
 
-    func encoded() throws -> Data {
+    func encoded(pretty: Bool = true) throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         return try encoder.encode(self)
     }

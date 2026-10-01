@@ -3,18 +3,22 @@ import SwiftData
 
 struct RestaurantDetailView: View {
     @Bindable var restaurant: Restaurant
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \TagDefinition.sortOrder) private var definitions: [TagDefinition]
+    @Query private var allRestaurants: [Restaurant]
+
     @State private var inspecting: TagDefinition?
     @State private var showingAddressFinder = false
-    @Environment(\.modelContext) private var modelContext
     @State private var showingNameSheet = false
-
-    private var profile: MyProfile { .shared }
+    @State private var openedCopy: Restaurant?
 
     private var center: AnalysisCenter { .shared }
+    private var profile: MyProfile { .shared }
 
     var body: some View {
         List {
+            originSection
+
             Section("Summary") {
                 summaryContent
             }
@@ -34,35 +38,43 @@ struct RestaurantDetailView: View {
                     .padding(.vertical, 4)
                 }
             }
-            
+
             Section("Address") {
                 addressContent
             }
-            
-            Section("Tags") {
-                if !appliedTags.isEmpty {
-                    FlowLayout {
-                        ForEach(appliedTags) { definition in
-                            Button {
-                                inspecting = definition
-                            } label: {
-                                TagChip(text: definition.name, isAI: isAI(definition))
+
+            if restaurant.isMine || !appliedTags.isEmpty {
+                Section("Tags") {
+                    if !appliedTags.isEmpty {
+                        FlowLayout {
+                            ForEach(appliedTags) { definition in
+                                Button {
+                                    inspecting = definition
+                                } label: {
+                                    TagChip(text: definition.name, isAI: isAI(definition))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    if restaurant.isMine {
+                        NavigationLink {
+                            TagPickerView(restaurant: restaurant)
+                        } label: {
+                            Label("Edit Tags & Warnings", systemImage: "tag")
                         }
                     }
-                    .padding(.vertical, 4)
-                }
-                NavigationLink {
-                    TagPickerView(restaurant: restaurant)
-                } label: {
-                    Label("Edit Tags & Warnings", systemImage: "tag")
                 }
             }
 
             Section {
                 NavigationLink {
-                    ReviewEditorView(restaurant: restaurant)
+                    if restaurant.isMine {
+                        ReviewEditorView(restaurant: restaurant)
+                    } else {
+                        ReadOnlyStatementsView(restaurant: restaurant)
+                    }
                 } label: {
                     HStack {
                         Label("Statements", systemImage: "list.number")
@@ -72,11 +84,14 @@ struct RestaurantDetailView: View {
                     }
                 }
             }
-            
+
             Section("Details") {
-                TextField("Restaurant Name", text: $restaurant.name)
+                if restaurant.isMine {
+                    TextField("Restaurant Name", text: $restaurant.name)
+                } else {
+                    LabeledContent("Name", value: restaurant.name)
+                }
             }
-            
         }
         .navigationTitle(restaurant.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -96,6 +111,67 @@ struct RestaurantDetailView: View {
         .sheet(isPresented: $showingNameSheet) {
             NameSheet()
         }
+        .navigationDestination(item: $openedCopy) { copy in
+            RestaurantDetailView(restaurant: copy)
+        }
+    }
+
+    // MARK: Who wrote it
+
+    private var authorDisplayName: String {
+        let name = restaurant.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "an unknown author" : name
+    }
+
+    @ViewBuilder
+    private var originSection: some View {
+        if !restaurant.isMine {
+            Section {
+                Label("Review by \(authorDisplayName)", systemImage: "person.fill")
+                if let received = restaurant.receivedAt {
+                    Text("Received \(received.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                copyButton
+            } footer: {
+                Text("This is \(authorDisplayName)'s review, so it can't be edited. Make a copy to add your own opinion. Theirs stays as it is.")
+            }
+        } else if !restaurant.basedOnAuthorName.isEmpty {
+            Section {
+                Label("Based on \(restaurant.basedOnAuthorName)'s review",
+                      systemImage: "arrow.turn.up.right")
+            }
+        }
+    }
+
+    /// A copy of this review that you already made, if any.
+    private var existingCopy: Restaurant? {
+        allRestaurants.first { $0.isMine && $0.basedOnReviewID == restaurant.id }
+    }
+
+    @ViewBuilder
+    private var copyButton: some View {
+        if let existing = existingCopy {
+            Button {
+                openedCopy = existing
+            } label: {
+                Label("Open My Copy", systemImage: "square.on.square")
+            }
+        } else {
+            Button {
+                makeCopy()
+            } label: {
+                Label("Make My Copy", systemImage: "square.on.square")
+            }
+        }
+    }
+
+    private func makeCopy() {
+        let copy = restaurant.makeCopy()
+        modelContext.insert(copy)
+        try? modelContext.save()
+        openedCopy = copy
     }
 
     // MARK: Applied tags and warnings
@@ -111,18 +187,26 @@ struct RestaurantDetailView: View {
     private func isAI(_ definition: TagDefinition) -> Bool {
         restaurant.appliedTags.contains { $0.tagKey == definition.key && $0.source == .ai }
     }
-    
+
     // MARK: Address and directions
 
     @ViewBuilder
     private var addressContent: some View {
-        TextField("Address", text: $restaurant.address)
+        if restaurant.isMine {
+            TextField("Address", text: $restaurant.address)
 
-        Button {
-            showingAddressFinder = true
-        } label: {
-            Label(restaurant.address.isEmpty ? "Find Address on Map" : "Look Up Address Again",
-                  systemImage: "mappin.and.ellipse")
+            Button {
+                showingAddressFinder = true
+            } label: {
+                Label(restaurant.address.isEmpty ? "Find Address on Map" : "Look Up Address Again",
+                      systemImage: "mappin.and.ellipse")
+            }
+        } else if restaurant.address.isEmpty {
+            Text("No address")
+                .foregroundStyle(.secondary)
+        } else {
+            Text(restaurant.address)
+                .textSelection(.enabled)
         }
 
         if !restaurant.address.isEmpty {
@@ -149,7 +233,7 @@ struct RestaurantDetailView: View {
                 .foregroundStyle(.secondary)
         }
     }
-    
+
     // MARK: Sharing
 
     private var shareMenu: some View {
@@ -163,7 +247,15 @@ struct RestaurantDetailView: View {
                                            filename: name),
                     preview: SharePreview(restaurant.name, image: Image(systemName: "fork.knife"))
                 ) {
-                    Label("Share Full Review", systemImage: "doc.text")
+                    Label("Share as File", systemImage: "doc.text")
+                }
+
+                ShareLink(
+                    item: ReviewsTextShareItem(container: modelContext.container,
+                                               restaurantID: restaurant.id),
+                    preview: SharePreview("\(restaurant.name) review")
+                ) {
+                    Label("Share as Text", systemImage: "text.alignleft")
                 }
             } else {
                 Button {
@@ -171,20 +263,6 @@ struct RestaurantDetailView: View {
                 } label: {
                     Label("Set Your Name to Share…", systemImage: "person.crop.circle.badge.plus")
                 }
-            }
-
-            ShareLink(
-                item: ContactCardItem(
-                    vcard: ContactCard.vcard(for: restaurant, definitions: definitions),
-                    filename: name
-                ),
-                preview: SharePreview(restaurant.name, image: Image(systemName: "person.crop.rectangle"))
-            ) {
-                Label("Share as Contact Card", systemImage: "person.crop.rectangle")
-            }
-
-            ShareLink(item: ReviewText.markdown(for: restaurant, definitions: definitions)) {
-                Label("Share as Text", systemImage: "text.alignleft")
             }
         } label: {
             Label("Share", systemImage: "square.and.arrow.up")
@@ -195,7 +273,14 @@ struct RestaurantDetailView: View {
 
     @ViewBuilder
     private var summaryContent: some View {
-        if center.isRunning(restaurant) {
+        if !restaurant.isMine {
+            if restaurant.summary.isEmpty {
+                Text("This review doesn't include a summary.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(restaurant.summary)
+            }
+        } else if center.isRunning(restaurant) {
             HStack {
                 ProgressView()
                 Text("Analyzing review…")
@@ -314,13 +399,16 @@ struct TagDetailSheet: View {
                     whyContent
                 }
 
-                Section {
-                    Button("Remove", role: .destructive) {
-                        restaurant.removeTag(key: definition.key)
-                        dismiss()
+                // Only the author can remove tags.
+                if restaurant.isMine {
+                    Section {
+                        Button("Remove", role: .destructive) {
+                            restaurant.removeTag(key: definition.key)
+                            dismiss()
+                        }
+                    } footer: {
+                        Text("A removed tag won't be applied again automatically.")
                     }
-                } footer: {
-                    Text("A removed tag won't be applied again automatically.")
                 }
             }
             .navigationTitle(definition.name)
@@ -339,12 +427,12 @@ struct TagDetailSheet: View {
         if let application {
             switch application.source {
             case .manual:
-                Text("Added by you.")
+                Text(restaurant.isMine ? "Added by you." : "Added by the author.")
                     .foregroundStyle(.secondary)
             case .ai:
                 let lines = evidenceLines(for: application)
                 if lines.isEmpty {
-                    Text("The statements that supported this have changed. Update the summary to check again.")
+                    Text("The statements that supported this have changed.")
                         .foregroundStyle(.secondary)
                 } else {
                     Label("Applied by AI from:", systemImage: "sparkles")
@@ -368,6 +456,38 @@ struct TagDetailSheet: View {
             application.evidence.contains(statement.id)
                 ? EvidenceLine(number: index + 1, statement: statement)
                 : nil
+        }
+    }
+}
+
+// MARK: - Statements of a received review
+
+struct ReadOnlyStatementsView: View {
+    let restaurant: Restaurant
+
+    var body: some View {
+        List {
+            ForEach(Array(restaurant.statements.enumerated()), id: \.element.id) { index, statement in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("\(index + 1)")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 28, alignment: .trailing)
+                    Text(statement.text)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .navigationTitle("Statements")
+        .navigationBarTitleDisplayMode(.inline)
+        .overlay {
+            if restaurant.statements.isEmpty {
+                ContentUnavailableView(
+                    "No Statements",
+                    systemImage: "list.number",
+                    description: Text("This review doesn't include any statements.")
+                )
+            }
         }
     }
 }

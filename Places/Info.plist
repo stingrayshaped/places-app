@@ -10,7 +10,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Default</string>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.stingrayshaped.places.review</string>
@@ -26,12 +26,17 @@
 			</array>
 			<key>UTTypeDescription</key>
 			<string>Places Review</string>
-			<key>UTTypeIcons</key>
-			<dict/>
+			<key>UTTypeIconFiles</key>
+			<array/>
 			<key>UTTypeIdentifier</key>
 			<string>com.stingrayshaped.places.review</string>
 			<key>UTTypeTagSpecification</key>
-			<dict/>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>placesreview</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>
