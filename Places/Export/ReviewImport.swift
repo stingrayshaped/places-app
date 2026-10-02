@@ -115,7 +115,7 @@ enum ReviewImporter {
         target.updatedAt = record.updatedAt
 
         target.authorID = mine ? nil : record.authorID
-        target.authorName = mine ? "" : (record.authorName ?? "")
+        target.authorName = record.authorName ?? ""
         target.receivedAt = mine ? nil : .now
         target.basedOnAuthorName = record.basedOnAuthorName ?? ""
         target.basedOnReviewID = record.basedOnReviewID

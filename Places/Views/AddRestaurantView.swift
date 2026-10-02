@@ -8,15 +8,25 @@ struct AddRestaurantView: View {
     private enum Field { case name, address }
     @FocusState private var focusedField: Field?
 
+    @State private var reviewer: String
+
     @State private var name = ""
     @State private var address = ""
     @State private var selectedPlace: PlaceResult?
     @State private var officialName: String?
     @State private var showingAddressFinder = false
 
+    init() {
+        _reviewer = State(initialValue: MyProfile.shared.lastReviewer)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    ReviewerPicker(selection: $reviewer, promptWhenEmpty: true)
+                }
+
                 Section {
                     TextField("Restaurant Name", text: $name)
                         .focused($focusedField, equals: .name)
@@ -63,7 +73,7 @@ struct AddRestaurantView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
-                        .disabled(trimmedName.isEmpty)
+                        .disabled(trimmedName.isEmpty || reviewer.isEmpty)
                 }
             }
             .sheet(isPresented: $showingAddressFinder) {
@@ -95,6 +105,9 @@ struct AddRestaurantView: View {
             name: trimmedName,
             address: address.trimmingCharacters(in: .whitespacesAndNewlines)
         )
+        restaurant.authorName = reviewer
+        MyProfile.shared.lastReviewer = reviewer
+
         if let selectedPlace, isMatched {
             restaurant.apply(selectedPlace)
         }

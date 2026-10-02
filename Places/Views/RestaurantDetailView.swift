@@ -9,11 +9,9 @@ struct RestaurantDetailView: View {
 
     @State private var inspecting: TagDefinition?
     @State private var showingAddressFinder = false
-    @State private var showingNameSheet = false
     @State private var openedCopy: Restaurant?
 
     private var center: AnalysisCenter { .shared }
-    private var profile: MyProfile { .shared }
 
     var body: some View {
         List {
@@ -87,6 +85,7 @@ struct RestaurantDetailView: View {
 
             Section("Details") {
                 if restaurant.isMine {
+                    ReviewerPicker(selection: $restaurant.authorName)
                     TextField("Restaurant Name", text: $restaurant.name)
                 } else {
                     LabeledContent("Name", value: restaurant.name)
@@ -107,9 +106,6 @@ struct RestaurantDetailView: View {
             AddressFinderView(initialQuery: restaurant.name) { place in
                 restaurant.apply(place)
             }
-        }
-        .sheet(isPresented: $showingNameSheet) {
-            NameSheet()
         }
         .navigationDestination(item: $openedCopy) { copy in
             RestaurantDetailView(restaurant: copy)
@@ -240,21 +236,13 @@ struct RestaurantDetailView: View {
         let name = ExportNaming.safeFilename(restaurant.name)
 
         return Menu {
-            if profile.hasName {
-                ShareLink(
-                    item: ReviewsShareItem(container: modelContext.container,
-                                           restaurantID: restaurant.id,
-                                           filename: name),
-                    preview: SharePreview(restaurant.name, image: Image(systemName: "fork.knife"))
-                ) {
-                    Label("Share Review File", systemImage: "doc.text")
-                }
-            } else {
-                Button {
-                    showingNameSheet = true
-                } label: {
-                    Label("Set Your Name to Share…", systemImage: "person.crop.circle.badge.plus")
-                }
+            ShareLink(
+                item: ReviewsShareItem(container: modelContext.container,
+                                       restaurantIDs: [restaurant.id],
+                                       filename: name),
+                preview: SharePreview(restaurant.name, image: Image(systemName: "fork.knife"))
+            ) {
+                Label("Share as File", systemImage: "doc.text")
             }
 
             ShareLink(item: ReviewText.markdown(for: restaurant)) {

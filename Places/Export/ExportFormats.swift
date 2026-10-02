@@ -47,30 +47,41 @@ enum ReviewText {
         }
         return sections.joined(separator: "\n\n")
     }
+    
+    /// Several reviews in one message, separated by a divider.
+    static func markdown(for restaurants: [Restaurant]) -> String {
+        restaurants
+            .map { markdown(for: $0) }
+            .joined(separator: "\n\n---\n\n")
+    }
 }
 
 // MARK: - Share items
-
 /// A Places file built at the moment of sharing, so it's always current.
-/// Pass a restaurantID to share one review, or nil to share them all.
+/// `restaurantIDs` picks which reviews to include. `backup` adds your whole
+/// tag list, removed-tag memory and identity, for restoring on a new phone.
 nonisolated struct ReviewsShareItem: Transferable {
     let container: ModelContainer
-    let restaurantID: UUID?
+    let restaurantIDs: [UUID]
     let filename: String
+    var backup = false
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .placesReview) { item in
             let data = try await MainActor.run { () throws -> Data in
                 let context = item.container.mainContext
                 var descriptor = FetchDescriptor<Restaurant>(sortBy: [SortDescriptor(\.name)])
-                if let id = item.restaurantID {
-                    descriptor.predicate = #Predicate<Restaurant> { $0.id == id }
+                if !item.restaurantIDs.isEmpty {
+                    let ids = item.restaurantIDs
+                    descriptor.predicate = #Predicate<Restaurant> { ids.contains($0.id) }
                 }
                 let restaurants = try context.fetch(descriptor)
                 let definitions = try context.fetch(
                     FetchDescriptor<TagDefinition>(sortBy: [SortDescriptor(\.sortOrder)])
                 )
-                let file = ReviewFile.make(restaurants: restaurants, definitions: definitions)
+                let file = ReviewFile.make(restaurants: restaurants,
+                                           definitions: definitions,
+                                           backup: item.backup)
                 try context.save()   // keeps any updated dates
                 return try file.encoded()
             }

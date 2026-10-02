@@ -5,16 +5,16 @@ struct ImportFromTextView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var parsed: ParsedReview?
+    @State private var parsed: [ParsedReview] = []
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Group {
-                if let parsed {
-                    preview(parsed)
-                } else {
+                if parsed.isEmpty {
                     pasteStep
+                } else {
+                    preview
                 }
             }
             .navigationTitle("Import Text from Clipboard")
@@ -24,10 +24,8 @@ struct ImportFromTextView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        if let parsed { create(parsed) }
-                    }
-                    .disabled(parsed == nil)
+                    Button("Create", action: create)
+                        .disabled(parsed.isEmpty)
                 }
             }
         }
@@ -61,29 +59,31 @@ struct ImportFromTextView: View {
 
     // MARK: Step 2: check and create
 
-    private func preview(_ parsed: ParsedReview) -> some View {
+    private var preview: some View {
         List {
-            Section {
-                Text(parsed.name)
-                    .font(.headline)
-                if !parsed.address.isEmpty {
-                    Text(parsed.address)
-                        .foregroundStyle(.secondary)
-                }
-            } footer: {
-                Text("This is added as a new review of your own. A summary and tags are created for it when Apple Intelligence is available.")
-            }
-
-            Section("\(parsed.statements.count) statements") {
-                ForEach(Array(parsed.statements.enumerated()), id: \.offset) { index, text in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text("\(index + 1)")
-                            .font(.callout.monospacedDigit())
+            ForEach(Array(parsed.enumerated()), id: \.offset) { _, review in
+                Section {
+                    Text(review.name)
+                        .font(.headline)
+                    if !review.address.isEmpty {
+                        Text(review.address)
                             .foregroundStyle(.secondary)
-                            .frame(minWidth: 28, alignment: .trailing)
-                        Text(text)
+                    }
+                    ForEach(Array(review.statements.enumerated()), id: \.offset) { index, text in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text("\(index + 1)")
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 28, alignment: .trailing)
+                            Text(text)
+                        }
                     }
                 }
+            }
+
+            Section {
+            } footer: {
+                Text("These are added as new reviews of your own, under the reviewer name you used last. A summary and tags are created for each when Apple Intelligence is available.")
             }
         }
     }
@@ -91,22 +91,32 @@ struct ImportFromTextView: View {
     // MARK: Actions
 
     private func handle(_ text: String) {
-        if let result = ReviewTextImport.parse(text) {
+        let result = ReviewTextImport.parseAll(text)
+        if result.isEmpty {
+            errorMessage = "Couldn't find a review in that text. It should start with the restaurant's name, followed by numbered statements."
+        } else {
             parsed = result
             errorMessage = nil
-        } else {
-            errorMessage = "Couldn't find a review in that text. It should start with the restaurant's name, followed by numbered statements."
         }
     }
 
-    private func create(_ parsed: ParsedReview) {
-        // A brand-new review: new id, and no author means it's yours.
-        let restaurant = Restaurant(name: parsed.name, address: parsed.address)
-        restaurant.statements = parsed.statements.map { ReviewStatement(text: $0) }
-        modelContext.insert(restaurant)
+    private func create() {
+        var created: [Restaurant] = []
+        for review in parsed {
+            // A brand-new review: new id, and no author id means it's yours.
+            let restaurant = Restaurant(name: review.name, address: review.address)
+            restaurant.authorName = MyProfile.shared.displayName
+            restaurant.statements = review.statements.map { ReviewStatement(text: $0) }
+            modelContext.insert(restaurant)
+            created.append(restaurant)
+        }
         try? modelContext.save()
         dismiss()
 
-        Task { await AnalysisCenter.shared.refresh(restaurant) }
+        Task {
+            for restaurant in created {
+                await AnalysisCenter.shared.refresh(restaurant)
+            }
+        }
     }
 }

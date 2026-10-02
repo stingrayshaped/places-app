@@ -120,7 +120,9 @@ extension ReviewFile {
                               evidence: $0.evidence, appliedAt: $0.appliedAt)
                 },
                 authorID: restaurant.authorID ?? me.authorID,
-                authorName: restaurant.isMine ? me.displayName : restaurant.authorName,
+                authorName: restaurant.authorName.isEmpty
+                    ? (restaurant.isMine ? me.displayName : "")
+                    : restaurant.authorName,
                 basedOnAuthorName: restaurant.basedOnAuthorName.isEmpty ? nil : restaurant.basedOnAuthorName,
                 basedOnReviewID: restaurant.basedOnReviewID,
                 rejectedTagKeys: backup ? restaurant.rejectedTagKeys : nil

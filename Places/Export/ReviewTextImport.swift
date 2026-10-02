@@ -1,11 +1,3 @@
-//
-//  ParsedReview.swift
-//  Places
-//
-//  Created by Raymond Yang on 9/30/26.
-//
-
-
 import Foundation
 
 struct ParsedReview {
@@ -14,8 +6,22 @@ struct ParsedReview {
     var statements: [String]
 }
 
-/// Reads the readable text made by "Share as Text" (or similar) into a review.
+/// Reads the readable text made by "Share as Text" (or similar) into reviews.
 enum ReviewTextImport {
+
+    /// One review per block, with blocks separated by a line of dashes.
+    static func parseAll(_ text: String) -> [ParsedReview] {
+        var blocks: [[String]] = [[]]
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.count >= 3, trimmed.allSatisfy({ $0 == "-" }) {
+                blocks.append([])
+            } else {
+                blocks[blocks.count - 1].append(line)
+            }
+        }
+        return blocks.compactMap { parse($0.joined(separator: "\n")) }
+    }
 
     static func parse(_ text: String) -> ParsedReview? {
         let lines = text
