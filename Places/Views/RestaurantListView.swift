@@ -30,6 +30,7 @@ struct RestaurantListView: View {
     @State private var editMode: EditMode = .inactive
     @State private var selection = Set<UUID>()
     @State private var showingDeleteConfirm = false
+    @State private var showingDecide = false
 
     private var isSelecting: Bool { editMode.isEditing }
 
@@ -126,6 +127,9 @@ struct RestaurantListView: View {
             .sheet(item: $importCenter.pending) { pending in
                 ImportPreviewView(file: pending.file)
             }
+            .fullScreenCover(isPresented: $showingDecide) {
+                DecideView(restaurants: restaurants, definitions: definitions)
+            }
             .fileImporter(
                 isPresented: $showingImporter,
                 allowedContentTypes: [.placesReview, .json, .data]
@@ -206,6 +210,13 @@ struct RestaurantListView: View {
             } label: {
                 Label("Edit Tags", systemImage: "tag")
             }
+            
+            Button {
+                showingDecide = true
+            } label: {
+                Label("Help Me Choose", systemImage: "questionmark.bubble")
+            }
+            .disabled(restaurants.count < 2)
         } label: {
             Label("More", systemImage: "ellipsis")
         }
